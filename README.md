@@ -38,18 +38,18 @@ cd build && ctest --output-on-failure
 ## Run
 
 ```bash
-./build/caidj --protocol all --concurrency 4 --duration 2000 --runs 1
+./build/caidj --protocol all --concurrency 4 --duration 2000 --runs 1 --output out/
 ```
 
 That takes a few seconds and prints a table. The full benchmark from the report
-is 30-second trials, 3 runs, at 1/2/4/8/16 writers:
+is 30-second trials, 3 runs, at 1/2/4/8/16 writers, and takes about 30 minutes:
 
 ```bash
 ./scripts/run_all.sh ./build/caidj
 ```
 
-Results default to `results/`, which already holds the recorded runs. Pass
-`--output` somewhere else if you don't want to overwrite them.
+Output defaults to `results/`, which already holds the recorded runs, so pass
+`--output` to somewhere else as above.
 
 Useful flags:
 
@@ -71,10 +71,10 @@ src/txn/        transaction manager
 src/bench/      benchmark harness
 include/caidj/  headers
 configs/        TOML benchmark configs
-results/        recorded results from the reported runs
+results/        full_benchmark/ is the run reported in the project;
+                the other files are from a separate run
 tests/          unit tests
-docs/           the results dashboard
-report/         the project report (PDF)
+docs/           the results dashboard and the project report (PDF)
 DESIGN.md       full implementation design document
 ```
 
@@ -94,6 +94,20 @@ Mean join latency (ms), lower is better:
 ECHI is fastest from 4 writers up and uses the least memory. MPI-MVCC never
 blocks a reader but version-chain traversal makes it the slowest protocol
 measured — a negative result worth keeping.
+
+## Changes from the original
+
+This repository is a modified copy. GPL-3.0 asks that modifications be stated:
+
+- headers moved from `data/include/` to `include/`, which is where
+  `CMakeLists.txt` already expected them
+- a portability shim for `std::atomic<std::shared_ptr<T>>`
+  (`include/caidj/util/atomic_shared_ptr.hpp`). libstdc++ implements the C++20
+  specialisation; libc++ does not, so the build failed on clang. The shim keeps
+  the native path where it exists and falls back to the `atomic_load`/
+  `atomic_store` free functions elsewhere
+- the `docs/` dashboard, generated from `results/full_benchmark/results.csv`
+- build artefacts and `results.tar` left out
 
 ## Authors
 

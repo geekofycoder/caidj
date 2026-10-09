@@ -4,3 +4,4 @@ logs/
 *.o
 *.a
 .DS_Store
+out/

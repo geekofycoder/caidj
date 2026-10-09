@@ -165,14 +165,17 @@
       <li><b>Concurrency-aware indexing is not an optimisation.</b> The baseline blocks more
       than one probe in three at 16 writers. All three alternatives block none.</li>
       <li><b>ECHI wins this workload.</b> Lowest latency and highest throughput from 4 writers
-      up, and it holds less memory than the baseline, because it keeps two hash maps during a
-      transition rather than unbounded version history.</li>
+      up, and it holds the least memory on average, because it keeps two hash maps during a
+      transition rather than unbounded version history. The baseline is slightly lower at
+      one writer, before contention inflates it.</li>
       <li><b>MPI-MVCC is the honest negative result.</b> Its read path is genuinely never
       blocked, but version-chain traversal over 50,000 tuples makes it the slowest protocol
       measured — worse than the baseline it was meant to beat. It would suit shorter version
       histories, not this one.</li>
       <li><b>BF-CSI's Bloom filter barely fires here.</b> About 7–8% of probes take the fast
-      path, because a Zipfian key distribution means most probes hit keys that are present.
+      path. The index is built from R and probed with S's keys, both drawn from the same
+      Zipfian distribution, so probes concentrate on exactly the keys R already holds &mdash;
+      and the filter only fires on a definite absence.
       It is the second-fastest at one writer and falls behind as writers are added.</li>
     </ul>
   </div>
