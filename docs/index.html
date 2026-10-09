@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAIDJ Benchmark Results</title>
+<meta name="description" content="Concurrency-Aware Indexing for Distributed Joins — benchmark results for four index protocols under concurrent write load.">
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f7f8fa; --line:#e3e6ea; --ink:#16191d; --mut:#5b6472;
+    --nhj:#c0392b; --echi:#2563eb; --mvcc:#2e8b57; --bfcsi:#d99a00; --accent:#2563eb;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#111418; --panel:#181c22; --line:#272c34; --ink:#e8eaed; --mut:#9aa3b0;
+      --nhj:#e74c3c; --echi:#5b9bff; --mvcc:#45b97c; --bfcsi:#f0b429; --accent:#5b9bff;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#111418; --panel:#181c22; --line:#272c34; --ink:#e8eaed; --mut:#9aa3b0;
+    --nhj:#e74c3c; --echi:#5b9bff; --mvcc:#45b97c; --bfcsi:#f0b429; --accent:#5b9bff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1000px; margin:0 auto; padding:0 16px}
+  header{border-bottom:1px solid var(--line); padding:56px 0 32px}
+  h1{font-size:clamp(26px,5vw,40px); line-height:1.15; margin:0 0 10px; letter-spacing:-.02em}
+  .sub{color:var(--mut); font-size:clamp(15px,2.4vw,18px); margin:0 0 22px}
+  .meta{color:var(--mut); font-size:14px; line-height:1.8}
+  .meta b{color:var(--ink); font-weight:600}
+  .btns{margin-top:22px; display:flex; gap:10px; flex-wrap:wrap}
+  .btn{
+    display:inline-block; padding:9px 16px; border:1px solid var(--line); border-radius:7px;
+    background:var(--panel); color:var(--ink); text-decoration:none; font-size:14px; font-weight:500;
+  }
+  .btn:hover{border-color:var(--accent); color:var(--accent)}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  .btn.primary:hover{opacity:.9; color:#fff}
+  section{padding:44px 0; border-bottom:1px solid var(--line)}
+  h2{font-size:21px; margin:0 0 6px; letter-spacing:-.01em}
+  .lede{color:var(--mut); margin:0 0 24px; font-size:15px}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:14px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px}
+  .card .n{font-size:30px; font-weight:650; letter-spacing:-.02em; line-height:1.1}
+  .card .l{color:var(--mut); font-size:13px; margin-top:7px; line-height:1.5}
+  .chart-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:18px}
+  @media(max-width:760px){ .chart-grid{grid-template-columns:1fr} }
+  .chart{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px}
+  .chart h3{font-size:15px; margin:0 0 2px}
+  .chart p{font-size:13px; color:var(--mut); margin:0 0 12px}
+  .cv{position:relative; height:280px}
+  table{width:100%; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums}
+  th,td{padding:9px 10px; text-align:right; border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{color:var(--mut); font-weight:600; font-size:12.5px; text-transform:uppercase; letter-spacing:.04em}
+  tbody tr:hover{background:var(--panel)}
+  .best{color:var(--mvcc); font-weight:650}
+  .worst{color:var(--nhj)}
+  .tw{overflow-x:auto; margin-bottom:26px}
+  .tw h3{font-size:15px; margin:0 0 10px}
+  .proto{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px}
+  .proto .card h4{margin:0 0 7px; font-size:15px}
+  .proto .card h4 span{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px}
+  .proto .card p{margin:0; font-size:13.5px; color:var(--mut); line-height:1.6}
+  .note{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bfcsi); border-radius:7px; padding:15px 17px; font-size:14px; color:var(--mut)}
+  .note b{color:var(--ink)}
+  .note ul{margin:9px 0 0; padding-left:20px}
+  .note li{margin:5px 0}
+  footer{padding:34px 0 54px; color:var(--mut); font-size:13.5px; line-height:1.8}
+  footer a{color:var(--accent)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em; background:var(--panel); padding:2px 5px; border-radius:4px; border:1px solid var(--line)}
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <h1>Concurrency-Aware Indexing for Distributed Joins</h1>
+  <p class="sub">Three index protocols that keep join probes running while the index is being written to — measured against a lock-based baseline.</p>
+  <p class="meta">
+    <b>Soubhik Kumar Gon</b> &middot; <b>Hitanshu Satpathy</b> &middot; <b>Amit Bhagat</b><br>
+    Supervised by <b>Dr. Rakesh Chandra Balabantaray</b><br>
+    B.Tech Project &middot; IIIT Bhubaneswar &middot; May 2026
+  </p>
+  <div class="btns">
+    <a class="btn primary" href="BPT_Report.pdf">Read the report (PDF)</a>
+    <a class="btn" href="https://github.com/geekofycoder/caidj">Source code</a>
+  </div>
+</div></header>
+
+<section><div class="wrap">
+  <h2>The problem</h2>
+  <p class="lede">A distributed join builds an index on the join key, then probes it. Classic
+  algorithms assume the data holds still while that happens. In a live system it does not —
+  writes keep arriving, and a lock on the index serialises them against every probe.</p>
+  <div class="cards">
+    <div class="card"><div class="n" style="color:var(--nhj)">38.2%</div>
+      <div class="l">of probes blocked on a lock in the baseline at 16 writer threads</div></div>
+    <div class="card"><div class="n" style="color:var(--mvcc)">0.0%</div>
+      <div class="l">blocked probes in all three proposed protocols, at every concurrency level</div></div>
+    <div class="card"><div class="n" style="color:var(--echi)">29.7&times;</div>
+      <div class="l">ECHI throughput over the baseline at 16 writers</div></div>
+    <div class="card"><div class="n" style="color:var(--nhj)">12.3&times;</div>
+      <div class="l">baseline latency growth from 1 to 16 writers (150&thinsp;ms &rarr; 1,856&thinsp;ms)</div></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Results</h2>
+  <p class="lede">Mean of 3 runs per point, 30-second trials, 10 probe threads, TPC-H-style
+  data at scale factor 0.1 (150,000 &times; 50,000 tuples, Zipfian &alpha;&nbsp;=&nbsp;1.2).
+  Latency and throughput use log scales — MPI-MVCC is two orders of magnitude from the rest.</p>
+  <div class="chart-grid">
+    <div class="chart"><h3>Join latency</h3><p>Lower is better &middot; log scale</p>
+      <div class="cv"><canvas id="c-lat"></canvas></div></div>
+    <div class="chart"><h3>Throughput</h3><p>Higher is better &middot; log scale</p>
+      <div class="cv"><canvas id="c-tp"></canvas></div></div>
+    <div class="chart"><h3>Lock contention</h3><p>Share of probes that blocked</p>
+      <div class="cv"><canvas id="c-ct"></canvas></div></div>
+    <div class="chart"><h3>Mean heap</h3><p>Absolute, as recorded in the CSV</p>
+      <div class="cv"><canvas id="c-mem"></canvas></div></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>The numbers</h2>
+  <p class="lede">Every figure below is computed from <code>results/full_benchmark/results.csv</code>
+  in this repository — 60 runs. Green marks the best value in a row, red the worst.</p>
+  <div class="tw"><h3>Join latency (ms)</h3><table id="t-lat"></table></div>
+  <div class="tw"><h3>Throughput (joins/sec)</h3><table id="t-tp"></table></div>
+  <div class="tw"><h3>Lock contention (%)</h3><table id="t-ct"></table></div>
+  <div class="tw"><h3>Mean heap (MB)</h3><table id="t-mem"></table></div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>How each one works</h2>
+  <p class="lede">All four implement the same <code>BaseIndex</code> interface, so the benchmark
+  swaps them without touching the join executor.</p>
+  <div class="proto">
+    <div class="card"><h4><span style="background:var(--nhj)"></span>NHJ — baseline</h4>
+      <p>A standard distributed hash join behind one global reader-writer lock. Probes take the
+      shared lock, writes take the exclusive one. This is the floor the others have to beat.</p></div>
+    <div class="card"><h4><span style="background:var(--echi)"></span>ECHI — epoch-based</h4>
+      <p>Writes are batched into a delta buffer and applied all at once at an epoch boundary.
+      Probes read a frozen snapshot and never take a lock at all. Fastest here at every level
+      from 4 writers up, and the lightest on memory.</p></div>
+    <div class="card"><h4><span style="background:var(--mvcc)"></span>MPI-MVCC — versioned</h4>
+      <p>Each key keeps a chain of committed versions, so a probe reads a consistent snapshot at
+      its own timestamp without blocking. The read path is never blocked, but walking the version
+      chain costs more than everything it saves in this workload.</p></div>
+    <div class="card"><h4><span style="background:var(--bfcsi)"></span>BF-CSI — Bloom-filtered</h4>
+      <p>A sharded Bloom filter sits in front of a concurrent skip-list and turns away keys that
+      are definitely absent. Strong at low concurrency; skip-list write contention catches up with
+      it as writers are added.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What to take from this</h2>
+  <div class="note">
+    <ul>
+      <li><b>Concurrency-aware indexing is not an optimisation.</b> The baseline blocks more
+      than one probe in three at 16 writers. All three alternatives block none.</li>
+      <li><b>ECHI wins this workload.</b> Lowest latency and highest throughput from 4 writers
+      up, and it holds less memory than the baseline, because it keeps two hash maps during a
+      transition rather than unbounded version history.</li>
+      <li><b>MPI-MVCC is the honest negative result.</b> Its read path is genuinely never
+      blocked, but version-chain traversal over 50,000 tuples makes it the slowest protocol
+      measured — worse than the baseline it was meant to beat. It would suit shorter version
+      histories, not this one.</li>
+      <li><b>BF-CSI's Bloom filter barely fires here.</b> About 7–8% of probes take the fast
+      path, because a Zipfian key distribution means most probes hit keys that are present.
+      It is the second-fastest at one writer and falls behind as writers are added.</li>
+    </ul>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Limits</h2>
+  <div class="note">
+    <ul>
+      <li><b>This is a simulator, not a cluster.</b> Everything runs in one process on one
+      machine. Network latency, node failure and partition rebalancing are not modelled. The
+      numbers describe relative protocol behaviour, not absolute production performance.</li>
+      <li><b>These are recorded results</b>, from the runs reported in the project. The page
+      does not run the benchmark — build the simulator and run it yourself to reproduce them.</li>
+      <li><b>Memory is shown as absolute mean heap</b> straight from the CSV. The report's
+      Table 4.4 gives overhead relative to the baseline computed a different way; those two
+      do not agree for ECHI and BF-CSI, so the raw figure is shown here.</li>
+      <li><b>Lock contention is a proxy.</b> Cache-line invalidation and allocator pressure
+      are not measured separately.</li>
+    </ul>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  Built in C++20. Source and build instructions:
+  <a href="https://github.com/geekofycoder/caidj">github.com/geekofycoder/caidj</a><br>
+  Licensed GPL-3.0. Original repository:
+  <a href="https://github.com/zakhaev26/db-research-paper">zakhaev26/db-research-paper</a>
+</div></footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const DATA = {
+ "levels": [
+  1,
+  2,
+  4,
+  8,
+  16
+ ],
+ "protocols": [
+  "NHJ",
+  "ECHI",
+  "MPI-MVCC",
+  "BF-CSI"
+ ],
+ "runs": 60,
+ "metrics": {
+  "latency": {
+   "NHJ": [
+    150.3653,
+    86.6492,
+    121.6707,
+    297.313,
+    1855.83
+   ],
+   "ECHI": [
+    56.4715,
+    96.0281,
+    94.4135,
+    71.111,
+    61.472
+   ],
+   "MPI-MVCC": [
+    7287.03,
+    4131.2367,
+    2802.7533,
+    2463.23,
+    2475.77
+   ],
+   "BF-CSI": [
+    97.942,
+    115.5772,
+    144.3667,
+    273.2917,
+    678.5977
+   ]
+  },
+  "throughput": {
+   "NHJ": [
+    367861.0,
+    583836.3333,
+    415960.3333,
+    169273.6667,
+    27718.8
+   ],
+   "ECHI": [
+    889132.3333,
+    548466.6667,
+    610930.0,
+    708012.3333,
+    822827.3333
+   ],
+   "MPI-MVCC": [
+    6911.1567,
+    12771.8833,
+    17865.1333,
+    20331.6667,
+    20250.4
+   ],
+   "BF-CSI": [
+    511658.3333,
+    441298.0,
+    348772.6667,
+    213643.3333,
+    73796.5667
+   ]
+  },
+  "contention": {
+   "NHJ": [
+    6.6847,
+    4.1313,
+    14.1613,
+    33.7813,
+    38.194
+   ],
+   "ECHI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "MPI-MVCC": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "BF-CSI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "memory": {
+   "NHJ": [
+    2.7523,
+    2.7215,
+    2.9756,
+    4.3872,
+    13.3225
+   ],
+   "ECHI": [
+    2.8259,
+    2.572,
+    2.438,
+    2.434,
+    2.4307
+   ],
+   "MPI-MVCC": [
+    5.3586,
+    12.5917,
+    14.4872,
+    17.3747,
+    11.6575
+   ],
+   "BF-CSI": [
+    3.1446,
+    3.153,
+    3.311,
+    3.639,
+    4.6082
+   ]
+  },
+  "build": {
+   "NHJ": [
+    5.4166,
+    5.3465,
+    5.4668,
+    5.327,
+    6.7632
+   ],
+   "ECHI": [
+    6.5668,
+    10.4244,
+    4.679,
+    9.4466,
+    10.2971
+   ],
+   "MPI-MVCC": [
+    46.2928,
+    37.3446,
+    29.7296,
+    22.7568,
+    20.5192
+   ],
+   "BF-CSI": [
+    62.1603,
+    60.069,
+    56.6581,
+    58.776,
+    76.9927
+   ]
+  },
+  "bf_fast": {
+   "NHJ": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ECHI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "MPI-MVCC": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "BF-CSI": [
+    3896.0,
+    3895.6667,
+    3856.6667,
+    3751.3333,
+    3543.6667
+   ]
+  },
+  "bf_fp": {
+   "NHJ": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ECHI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "MPI-MVCC": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "BF-CSI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.3333
+   ]
+  },
+  "bf_rebuild": {
+   "NHJ": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ECHI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "MPI-MVCC": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "BF-CSI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "gc": {
+   "NHJ": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "ECHI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "MPI-MVCC": [
+    13.3333,
+    7.3333,
+    5.0,
+    4.0,
+    4.3333
+   ],
+   "BF-CSI": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "writes": {
+   "NHJ": [
+    5090.3333,
+    3491.6667,
+    28344.0,
+    153659.6667,
+    1007391.3333
+   ],
+   "ECHI": [
+    2000.0,
+    2667.6667,
+    2670.3333,
+    2340.3333,
+    2015.0
+   ],
+   "MPI-MVCC": [
+    781.3333,
+    980.3333,
+    882.6667,
+    741.0,
+    893.3333
+   ],
+   "BF-CSI": [
+    639.0,
+    1117.3333,
+    13064.0,
+    45506.6667,
+    115209.6667
+   ]
+  }
+ }
+};
+
+const CSS = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COLOR = {"NHJ":"--nhj","ECHI":"--echi","MPI-MVCC":"--mvcc","BF-CSI":"--bfcsi"};
+const fmt = n => n >= 10000 ? Math.round(n).toLocaleString()
+               : n >= 100   ? n.toFixed(1)
+               : n >= 1     ? n.toFixed(2)
+               : n.toFixed(2);
+
+function mkChart(id, metric, {log=false, unit=""}={}) {
+  const ink = CSS("--ink"), mut = CSS("--mut"), line = CSS("--line");
+  const sets = DATA.protocols.map(p => ({
+    label: p,
+    data: DATA.metrics[metric][p],
+    borderColor: CSS(COLOR[p]),
+    backgroundColor: CSS(COLOR[p]),
+    borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, tension: .25
+  }));
+  new Chart(document.getElementById(id), {
+    type: "line",
+    data: { labels: DATA.levels.map(String), datasets: sets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: mut, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle", font: { size: 12 } } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)}${unit}` } }
+      },
+      scales: {
+        x: { title: { display: true, text: "concurrent write threads", color: mut, font: { size: 11 } },
+             ticks: { color: mut }, grid: { color: line } },
+        y: { type: log ? "logarithmic" : "linear", beginAtZero: !log,
+             ticks: { color: mut, callback: v => fmt(v) }, grid: { color: line } }
+      }
+    }
+  });
+}
+
+function mkTable(id, metric, {unit="", lowBest=true, skipMark=false}={}) {
+  const t = document.getElementById(id);
+  let h = "<thead><tr><th>Writers</th>" +
+          DATA.protocols.map(p => `<th>${p}</th>`).join("") + "</tr></thead><tbody>";
+  DATA.levels.forEach((c, i) => {
+    const vals = DATA.protocols.map(p => DATA.metrics[metric][p][i]);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    h += `<tr><td>${c}</td>` + vals.map(v => {
+      let cls = "";
+      if (!skipMark && lo !== hi) {
+        if (v === (lowBest ? lo : hi)) cls = "best";
+        else if (v === (lowBest ? hi : lo)) cls = "worst";
+      }
+      return `<td class="${cls}">${fmt(v)}${unit}</td>`;
+    }).join("") + "</tr>";
+  });
+  t.innerHTML = h + "</tbody>";
+}
+
+mkChart("c-lat", "latency",    { log: true,  unit: " ms" });
+mkChart("c-tp",  "throughput", { log: true,  unit: " j/s" });
+mkChart("c-ct",  "contention", { log: false, unit: " %" });
+mkChart("c-mem", "memory",     { log: false, unit: " MB" });
+
+mkTable("t-lat", "latency",    { unit: "",  lowBest: true  });
+mkTable("t-tp",  "throughput", { unit: "",  lowBest: false });
+mkTable("t-ct",  "contention", { unit: "",  lowBest: true  });
+mkTable("t-mem", "memory",     { unit: "",  lowBest: true  });
+</script>
+</body>
+</html>

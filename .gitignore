@@ -1,0 +1,6 @@
+build/
+data/relation_*.csv
+logs/
+*.o
+*.a
+.DS_Store
