@@ -48,6 +48,9 @@ is 30-second trials, 3 runs, at 1/2/4/8/16 writers:
 ./scripts/run_all.sh ./build/caidj
 ```
 
+Results default to `results/`, which already holds the recorded runs. Pass
+`--output` somewhere else if you don't want to overwrite them.
+
 Useful flags:
 
 ```
