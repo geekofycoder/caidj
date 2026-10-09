@@ -105,7 +105,6 @@ B.Tech project, International Institute of Information Technology Bhubaneswar, M
 
 Supervised by Dr. Rakesh Chandra Balabantaray, Department of CSE, IIIT Bhubaneswar.
 
-Original repository: [zakhaev26/db-research-paper](https://github.com/zakhaev26/db-research-paper)
 
 ## Note on scope
 
